@@ -7,65 +7,160 @@ const CANVAS_HEIGHT = parseInt(process.env.NEXT_PUBLIC_CANVAS_HEIGHT || '800', 1
 const BOX_SIZE = 50;
 const WS_URL = 'ws://localhost:8765';
 
+interface CursorPosition {
+  x: number;
+  y: number;
+  source?: string;
+}
+
 export default function Home() {
   const [selectedBoxes, setSelectedBoxes] = useState<Set<number>>(new Set());
   const [ws, setWs] = useState<WebSocket | null>(null);
-  const [mousePosition, setMousePosition] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
-  const [broadcastedPositions, setBroadcastedPositions] = useState<{ x: number, y: number }[]>([]);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
+  const [mousePosition, setMousePosition] = useState<CursorPosition>({ x: 0, y: 0 });
+  const [broadcastedPositions, setBroadcastedPositions] = useState<{ [key: string]: CursorPosition }>({});
   const canvasRef = useRef<HTMLDivElement>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
   const GRID_COLS = Math.floor(CANVAS_WIDTH / BOX_SIZE);
   const GRID_ROWS = Math.floor(CANVAS_HEIGHT / BOX_SIZE);
   const totalBoxes = GRID_ROWS * GRID_COLS;
 
   useEffect(() => {
-    const socket = new WebSocket(WS_URL);
-    setWs(socket);
+    const connectWebSocket = () => {
+      try {
+        setConnectionStatus('connecting');
+        console.log('Attempting to connect to WebSocket...');
+        
+        const socket = new WebSocket(WS_URL);
+        wsRef.current = socket;
+        setWs(socket);
 
-    socket.onopen = () => console.log('WebSocket connected');
-    socket.onclose = () => console.log('WebSocket disconnected');
-    socket.onerror = (error) => console.error('WebSocket error:', error);
+        socket.onopen = () => {
+          console.log('WebSocket connected successfully');
+          setConnectionStatus('connected');
+          // Clear any existing reconnection timeout
+          if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current);
+          }
+        };
 
-    socket.onmessage = (event) => {
-      console.log('Message from server:', event.data);
-      const data = JSON.parse(event.data);
-      if (data.status === "success") {
-        setBroadcastedPositions(prev => [...prev, { x: data.x, y: data.y }]);
-      } else {
-        console.error("Server error:", data.message);
+        socket.onclose = (event) => {
+          console.log('WebSocket disconnected:', event.code, event.reason);
+          setConnectionStatus('disconnected');
+          wsRef.current = null;
+          setWs(null);
+          
+          // Attempt to reconnect after 5 seconds
+          reconnectTimeoutRef.current = setTimeout(() => {
+            console.log('Attempting to reconnect...');
+            connectWebSocket();
+          }, 5000);
+        };
+
+        socket.onerror = (error) => {
+          console.log('WebSocket error occurred. Details:', {
+            error,
+            readyState: socket.readyState,
+            url: socket.url
+          });
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.status === "success" && data.source) {
+              setBroadcastedPositions(prev => ({
+                ...prev,
+                [data.source]: { x: data.x, y: data.y, source: data.source }
+              }));
+            } else {
+              console.warn("Received message with unexpected format:", data);
+            }
+          } catch (error) {
+            console.error("Error parsing WebSocket message:", error);
+          }
+        };
+      } catch (error) {
+        console.error('Error creating WebSocket connection:', error);
+        setConnectionStatus('disconnected');
+        
+        // Attempt to reconnect after 5 seconds
+        reconnectTimeoutRef.current = setTimeout(connectWebSocket, 5000);
       }
     };
 
+    connectWebSocket();
+
+    // Cleanup function
     return () => {
-      socket.close();
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
     };
   }, []);
 
   const handleMouseMove = (event: React.MouseEvent) => {
-    if (ws && ws.readyState === WebSocket.OPEN && canvasRef.current) {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
+      const x = Math.round(event.clientX - rect.left);
+      const y = Math.round(event.clientY - rect.top);
 
       setMousePosition({ x, y });
-      ws.send(JSON.stringify({ x, y }));
+      try {
+        wsRef.current.send(JSON.stringify({ x, y }));
+      } catch (error) {
+        console.error('Error sending mouse position:', error);
+      }
     }
   };
 
   const handleBoxClick = (index: number) => {
     setSelectedBoxes(prev => {
       const newSet = new Set(prev);
-      newSet.has(index) ? newSet.delete(index) : newSet.add(index);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
       return newSet;
     });
   };
 
+  // Get connection status color
+  const getStatusColor = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return 'text-green-500';
+      case 'connecting':
+        return 'text-yellow-500';
+      case 'disconnected':
+        return 'text-red-500';
+      default:
+        return 'text-gray-500';
+    }
+  };
+
   return (
-    <div className="h-screen w-screen bg-white dark:bg-black overflow-auto flex justify-center items-center">
+    <div className="min-h-screen w-full bg-gray-900 overflow-auto flex justify-center items-center p-4">
+      {/* Connection Status */}
+      <div className={`fixed top-2 right-2 ${getStatusColor()} font-bold`}>
+        {connectionStatus.toUpperCase()}
+      </div>
+
       <div
         ref={canvasRef}
-        className="grid gap-[1px]"
-        style={{ width: `${CANVAS_WIDTH}px`, height: `${CANVAS_HEIGHT}px`, gridTemplateColumns: `repeat(${GRID_COLS}, ${BOX_SIZE}px)`, gridTemplateRows: `repeat(${GRID_ROWS}, ${BOX_SIZE}px)` }}
+        className="relative grid gap-[1px] bg-gray-800"
+        style={{
+          width: `${CANVAS_WIDTH}px`,
+          height: `${CANVAS_HEIGHT}px`,
+          gridTemplateColumns: `repeat(${GRID_COLS}, ${BOX_SIZE}px)`,
+          gridTemplateRows: `repeat(${GRID_ROWS}, ${BOX_SIZE}px)`
+        }}
         onMouseMove={handleMouseMove}
       >
         {Array.from({ length: totalBoxes }, (_, index) => (
@@ -73,26 +168,37 @@ export default function Home() {
             key={index}
             onClick={() => handleBoxClick(index)}
             className={`
-              w-[${BOX_SIZE}px] h-[${BOX_SIZE}px] cursor-pointer transition-colors
+              cursor-pointer transition-colors
               ${selectedBoxes.has(index)
                 ? 'bg-blue-500'
-                : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700'}
+                : 'bg-gray-700 hover:bg-gray-600'}
             `}
+          />
+        ))}
+
+        {/* Render cursors */}
+        {Object.values(broadcastedPositions).map((position, index) => (
+          <div
+            key={position.source || index}
+            className="absolute w-4 h-4 bg-red-500 rounded-full transform -translate-x-2 -translate-y-2"
+            style={{
+              left: position.x,
+              top: position.y,
+            }}
           />
         ))}
       </div>
 
-      <div style={{ position: 'absolute', top: '10px', left: '10px', color: 'white' }}>
-        Local Mouse position: X={mousePosition.x}, Y={mousePosition.y}
-      </div>
-
-      <div style={{ position: 'absolute', top: '40px', left: '10px', color: 'white' }}>
-        <h3>Broadcasted Mouse positions:</h3>
-        {broadcastedPositions.map((position, index) => (
-          <div key={index}>
-            X={position.x}, Y={position.y}
-          </div>
-        ))}
+      <div className="fixed top-4 left-4 text-white space-y-2">
+        <div>Local Mouse position: X={mousePosition.x}, Y={mousePosition.y}</div>
+        <div>
+          <h3 className="font-bold">Connected Cursors:</h3>
+          {Object.values(broadcastedPositions).map((position, index) => (
+            <div key={position.source || index}>
+              Client {position.source}: X={position.x}, Y={position.y}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
