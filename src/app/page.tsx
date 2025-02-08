@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 
-const CANVAS_WIDTH = parseInt(process.env.NEXT_PUBLIC_CANVAS_WIDTH || '800', 10);
-const CANVAS_HEIGHT = parseInt(process.env.NEXT_PUBLIC_CANVAS_HEIGHT || '800', 10);
+const CANVAS_WIDTH = parseInt(process.env.NEXT_PUBLIC_CANVAS_WIDTH || '1280', 10); // 16:9 ratio width
+const CANVAS_HEIGHT = Math.round(CANVAS_WIDTH * 9 / 16); // Calculate height based on 16:9 ratio
 const BOX_SIZE = 50;
 const WS_URL = 'ws://localhost:8765';
 
