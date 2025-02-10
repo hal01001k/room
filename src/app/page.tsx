@@ -28,6 +28,16 @@ export default function Home() {
   const GRID_ROWS = Math.floor(CANVAS_HEIGHT / (BOX_SIZE + PADDING));
   const totalBoxes = GRID_ROWS * GRID_COLS;
 
+  const sendPacket = (data: any) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify(data));
+      } catch (error) {
+        console.error('Error sending packet:', error);
+      }
+    }
+  };
+
   useEffect(() => {
     const connectWebSocket = () => {
       setConnectionStatus('connecting');
@@ -83,16 +93,9 @@ export default function Home() {
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        const x = Math.round(event.pageX);
-        const y = Math.round(event.pageY);
-        setMousePosition({ x, y });
-        try {
-          wsRef.current.send(JSON.stringify({ type: 'mousemove', x, y, additionalData: 'exampleData' }));
-        } catch (error) {
-          console.error('Error sending mouse position:', error);
-        }
-      }
+      const x = Math.round(event.pageX);
+      const y = Math.round(event.pageY);
+      setMousePosition({ x, y });
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -101,6 +104,14 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      sendPacket({ type: 'mousemove', x: mousePosition.x, y: mousePosition.y, additionalData: 'exampleData' });
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [mousePosition]);
+
   const handleBoxClick = (index: number) => {
     setSelectedBoxes(prev => {
       const newSet = new Set(prev);
@@ -108,13 +119,7 @@ export default function Home() {
       return newSet;
     });
 
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      try {
-        wsRef.current.send(JSON.stringify({ type: 'boxclick', index, additionalData: 'exampleData' }));
-      } catch (error) {
-        console.error('Error sending box click:', error);
-      }
-    }
+    sendPacket({ type: 'boxclick', index, additionalData: 'exampleData' });
   };
 
   const getStatusColor = () => {
