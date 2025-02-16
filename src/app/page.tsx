@@ -28,15 +28,20 @@ export default function Home() {
   const GRID_ROWS = Math.floor(CANVAS_HEIGHT / (BOX_SIZE + PADDING));
   const totalBoxes = GRID_ROWS * GRID_COLS;
 
-  const sendPacket = (data: any) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      try {
-        wsRef.current.send(JSON.stringify(data));
-      } catch (error) {
-        console.error('Error sending packet:', error);
+  const sendPacket = (() => {
+    let lastSent = 0;
+    return (data: any) => {
+      const now = Date.now();
+      if (now - lastSent >= 500 && wsRef.current?.readyState === WebSocket.OPEN) {
+        try {
+          wsRef.current.send(JSON.stringify(data));
+          lastSent = now;
+        } catch (error) {
+          console.error('Error sending packet:', error);
+        }
       }
-    }
-  };
+    };
+  })();
 
   useEffect(() => {
     const connectWebSocket = () => {
@@ -143,7 +148,7 @@ export default function Home() {
 
       <div
         ref={canvasRef}
-        className="relative grid gap-[6px] bg-gray-794"
+        className="relative grid gap-[6px] bg-gray-794 hidden md:grid"
         style={{
           width: `${CANVAS_WIDTH}px`,
           height: `${CANVAS_HEIGHT}px`,
@@ -176,7 +181,7 @@ export default function Home() {
         ))}
       </div>
 
-      <div className="fixed top-4 left-4 text-white space-y-2">
+      <div className="fixed top-4 left-4 text-white space-y-2 hidden md:block">
         <div>Local Mouse position: X={mousePosition.x}, Y={mousePosition.y}</div>
         <div>
           <h3 className="font-bold">Connected Cursors:</h3>
