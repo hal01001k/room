@@ -22,7 +22,7 @@ export default function Home() {
   const [broadcastedPositions, setBroadcastedPositions] = useState<{ [key: string]: CursorPosition }>({});
   const canvasRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const GRID_COLS = Math.floor(CANVAS_WIDTH / (BOX_SIZE + PADDING));
   const GRID_ROWS = Math.floor(CANVAS_HEIGHT / (BOX_SIZE + PADDING));
@@ -30,7 +30,7 @@ export default function Home() {
 
   const sendPacket = (() => {
     let lastSent = 0;
-    return (data: any) => {
+    return (data: { type: string; x?: number; y?: number; index?: number; additionalData: string }) => {
       const now = Date.now();
       if (now - lastSent >= 500 && wsRef.current?.readyState === WebSocket.OPEN) {
         try {
@@ -115,12 +115,16 @@ export default function Home() {
     }, 500);
 
     return () => clearInterval(interval);
-  }, [mousePosition]);
+  }, [mousePosition, sendPacket]);
 
   const handleBoxClick = (index: number) => {
     setSelectedBoxes(prev => {
       const newSet = new Set(prev);
-      newSet.has(index) ? newSet.delete(index) : newSet.add(index);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
       return newSet;
     });
 
