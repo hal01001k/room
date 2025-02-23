@@ -145,14 +145,15 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-gray-900 overflow-auto flex justify-center items-center p-4">
-      <div className={`fixed top-2 right-2 ${getStatusColor()} font-bold`}>
+    <div className="min-h-screen w-full bg-gray-900 overflow-auto flex justify-center items-center p-4 relative">
+      <div className="wave-background absolute inset-0 z-0"></div>
+      <div className={`fixed top-2 right-2 ${getStatusColor()} font-bold z-10`}>
         {connectionStatus.toUpperCase()}
       </div>
 
       <div
         ref={canvasRef}
-        className="relative grid gap-[6px] bg-gray-794 hidden md:grid"
+        className="relative grid gap-[6px] bg-gray-794 hidden md:grid z-10"
         style={{
           width: `${CANVAS_WIDTH}px`,
           height: `${CANVAS_HEIGHT}px`,
@@ -185,7 +186,7 @@ export default function Home() {
         ))}
       </div>
 
-      <div className="fixed top-4 left-4 text-white space-y-2 hidden md:block">
+      <div className="fixed top-4 left-4 text-white space-y-2 hidden md:block z-10">
         <div>Local Mouse position: X={mousePosition.x}, Y={mousePosition.y}</div>
         <div>
           <h3 className="font-bold">Connected Cursors:</h3>
